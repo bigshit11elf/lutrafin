@@ -14,7 +14,9 @@
   let contentElement: HTMLElement;
   let contentCanScroll = $state(false);
   let mobileMenuOpen = $state(false);
+  let brandIntroVisible = $state(false);
   let scrollToTopAfterNavigation = false;
+  let brandIntroFallback: ReturnType<typeof setTimeout> | undefined;
 
   function pathOnly(href: string) {
     return href.split('?')[0];
@@ -73,6 +75,12 @@
     mobileMenuOpen = false;
   }
 
+  function finishBrandIntro() {
+    if (!brandIntroVisible) return;
+    brandIntroVisible = false;
+    if (brandIntroFallback) clearTimeout(brandIntroFallback);
+  }
+
   afterNavigate(() => {
     if (!scrollToTopAfterNavigation) return;
     scrollToTopAfterNavigation = false;
@@ -80,6 +88,23 @@
   });
 
   onMount(() => {
+    const introPlayedKey = 'lutrafin.brandIntroPlayed';
+    const reducedMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)'
+    ).matches;
+    const referrer = document.referrer ? new URL(document.referrer) : undefined;
+    const externalEntry =
+      !referrer || referrer.origin !== window.location.origin;
+    if (
+      externalEntry &&
+      !reducedMotion &&
+      sessionStorage.getItem(introPlayedKey) !== 'true'
+    ) {
+      sessionStorage.setItem(introPlayedKey, 'true');
+      brandIntroVisible = true;
+      brandIntroFallback = setTimeout(finishBrandIntro, 1800);
+    }
+
     updateContentScrollState();
     const resizeObserver = new ResizeObserver(updateContentScrollState);
     const mutationObserver = new MutationObserver(updateContentScrollState);
@@ -94,6 +119,7 @@
       resizeObserver.disconnect();
       mutationObserver.disconnect();
       window.removeEventListener('resize', updateContentScrollState);
+      if (brandIntroFallback) clearTimeout(brandIntroFallback);
     };
   });
 </script>
@@ -209,6 +235,16 @@
     {@render children()}
   </section>
 </main>
+
+{#if brandIntroVisible}
+  <div
+    class="brand-intro-overlay"
+    aria-hidden="true"
+    onanimationend={finishBrandIntro}
+  >
+    <img class="brand-intro-logo" src={logoUrl} alt="" />
+  </div>
+{/if}
 
 {#if contentCanScroll}
   <button

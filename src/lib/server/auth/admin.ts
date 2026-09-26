@@ -7,6 +7,7 @@ import { eq, lt } from 'drizzle-orm';
 
 const cookieName = 'lutrafin-admin';
 const sessionMaxAgeSeconds = 60 * 60 * 12;
+const processStartedAt = new Date().toISOString();
 
 function sessionHash(sessionId: string): string {
   return createHash('sha256').update(sessionId).digest('hex');
@@ -36,6 +37,7 @@ export function isAdminSession(cookies: import('@sveltejs/kit').Cookies) {
     session &&
     session.username === config.admin.username &&
     !session.invalidatedAt &&
+    session.createdAt >= processStartedAt &&
     session.expiresAt > now
   );
 }

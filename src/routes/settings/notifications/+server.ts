@@ -38,6 +38,14 @@ function list(data: Record<string, unknown>, key: string): string[] {
   return typeof value === 'string' && value ? [value] : [];
 }
 
+function notificationUrl(value: string): string {
+  const url = new URL(value);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('Notification URL must use http or https.');
+  }
+  return url.toString();
+}
+
 function mergeConfig(
   existing: Record<string, unknown>,
   data: Record<string, unknown>,
@@ -49,8 +57,12 @@ function mergeConfig(
   };
   for (const key of ['serverUrl', 'topic', 'webhookUrl', 'device']) {
     const value = text(data, `${provider}.${key}`);
-    if (value) config[key] = value;
-    else if (Object.hasOwn(data, `${provider}.${key}`)) delete config[key];
+    if (value) {
+      config[key] =
+        key === 'serverUrl' || key === 'webhookUrl'
+          ? notificationUrl(value)
+          : value;
+    } else if (Object.hasOwn(data, `${provider}.${key}`)) delete config[key];
   }
   for (const key of ['token', 'userKey', 'applicationToken']) {
     const value = text(data, `${provider}.${key}`);
@@ -70,19 +82,29 @@ export const POST: RequestHandler = async ({ cookies, request, url }) => {
   const resetProvider = action.startsWith('reset:')
     ? action.slice('reset:'.length)
     : undefined;
-  settings.setNotificationEventTypes(list(data, 'eventTypes'));
-  for (const provider of notificationProviders) {
-    if (resetProvider === provider.id) {
-      settings.setNotificationProviderConfig(provider.id, {});
-      continue;
+  try {
+    settings.setNotificationEventTypes(list(data, 'eventTypes'));
+    for (const provider of notificationProviders) {
+      if (resetProvider === provider.id) {
+        settings.setNotificationProviderConfig(provider.id, {});
+        continue;
+      }
+      settings.setNotificationProviderConfig(
+        provider.id,
+        mergeConfig(
+          settings.getNotificationProviderConfig(provider.id),
+          data,
+          provider.id
+        )
+      );
     }
-    settings.setNotificationProviderConfig(
-      provider.id,
-      mergeConfig(
-        settings.getNotificationProviderConfig(provider.id),
-        data,
-        provider.id
-      )
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Invalid settings.';
+    if (wantsJson) return json({ ok: false, message }, { status: 400 });
+    throw redirect(
+      303,
+      `/settings?message=${encodeURIComponent(message)}#notifications`
     );
   }
   const testCount =

@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, lte, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import type {
   NotificationEvent,
@@ -7,6 +7,7 @@ import type {
 import * as schema from '../schema';
 
 type Db = BetterSQLite3Database<typeof schema>;
+const deliveryLeaseMs = 5 * 60 * 1000;
 
 export class NotificationRepository {
   constructor(private readonly db: Db) {}
@@ -87,21 +88,74 @@ export class NotificationRepository {
       .run();
   }
 
-  dueDeliveries(now: string, limit = 25) {
-    return this.db
-      .select()
-      .from(schema.notificationDeliveries)
-      .where(
-        and(
-          inArray(schema.notificationDeliveries.status, ['pending', 'failed']),
+  claimDueDeliveries(now: string, limit = 25) {
+    const leaseExpiredAt = new Date(
+      new Date(now).getTime() - deliveryLeaseMs
+    ).toISOString();
+    return this.db.transaction((tx) => {
+      const candidates = tx
+        .select({ id: schema.notificationDeliveries.id })
+        .from(schema.notificationDeliveries)
+        .where(
           or(
-            isNull(schema.notificationDeliveries.nextAttemptAt),
-            lte(schema.notificationDeliveries.nextAttemptAt, now)
+            and(
+              inArray(schema.notificationDeliveries.status, [
+                'pending',
+                'failed'
+              ]),
+              or(
+                isNull(schema.notificationDeliveries.nextAttemptAt),
+                lte(schema.notificationDeliveries.nextAttemptAt, now)
+              )
+            ),
+            and(
+              eq(schema.notificationDeliveries.status, 'sending'),
+              or(
+                isNull(schema.notificationDeliveries.claimedAt),
+                lte(schema.notificationDeliveries.claimedAt, leaseExpiredAt)
+              )
+            )
           )
         )
-      )
-      .limit(limit)
-      .all();
+        .limit(limit)
+        .all();
+
+      const ids = candidates.map((candidate) => candidate.id);
+      if (ids.length === 0) return [];
+
+      tx.update(schema.notificationDeliveries)
+        .set({ status: 'sending', claimedAt: now, updatedAt: now })
+        .where(
+          and(
+            inArray(schema.notificationDeliveries.id, ids),
+            or(
+              inArray(schema.notificationDeliveries.status, [
+                'pending',
+                'failed'
+              ]),
+              and(
+                eq(schema.notificationDeliveries.status, 'sending'),
+                or(
+                  isNull(schema.notificationDeliveries.claimedAt),
+                  lte(schema.notificationDeliveries.claimedAt, leaseExpiredAt)
+                )
+              )
+            )
+          )
+        )
+        .run();
+
+      return tx
+        .select()
+        .from(schema.notificationDeliveries)
+        .where(
+          and(
+            inArray(schema.notificationDeliveries.id, ids),
+            eq(schema.notificationDeliveries.status, 'sending')
+          )
+        )
+        .all();
+    });
   }
 
   markSent(id: string, now: string): void {
@@ -112,10 +166,16 @@ export class NotificationRepository {
         notifiedAt: now,
         lastAttemptAt: now,
         lastError: null,
+        claimedAt: null,
         nextAttemptAt: null,
         updatedAt: now
       })
-      .where(eq(schema.notificationDeliveries.id, id))
+      .where(
+        and(
+          eq(schema.notificationDeliveries.id, id),
+          eq(schema.notificationDeliveries.status, 'sending')
+        )
+      )
       .run();
   }
 
@@ -123,22 +183,23 @@ export class NotificationRepository {
     id: string,
     input: { now: string; error: string; nextAttemptAt: string | null }
   ): void {
-    const existing = this.db
-      .select({ attemptCount: schema.notificationDeliveries.attemptCount })
-      .from(schema.notificationDeliveries)
-      .where(eq(schema.notificationDeliveries.id, id))
-      .get();
     this.db
       .update(schema.notificationDeliveries)
       .set({
-        status: 'failed',
-        attemptCount: (existing?.attemptCount ?? 0) + 1,
+        status: input.nextAttemptAt ? 'failed' : 'exhausted',
+        attemptCount: sql`${schema.notificationDeliveries.attemptCount} + 1`,
         lastAttemptAt: input.now,
         lastError: input.error.slice(0, 500),
+        claimedAt: null,
         nextAttemptAt: input.nextAttemptAt,
         updatedAt: input.now
       })
-      .where(eq(schema.notificationDeliveries.id, id))
+      .where(
+        and(
+          eq(schema.notificationDeliveries.id, id),
+          eq(schema.notificationDeliveries.status, 'sending')
+        )
+      )
       .run();
   }
 }

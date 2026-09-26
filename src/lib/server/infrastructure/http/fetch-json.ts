@@ -3,6 +3,7 @@ export type FetchJsonOptions = {
   timeoutMs?: number;
   retries?: number;
   retryDelayMs?: number;
+  maxBytes?: number;
 };
 
 function delay(ms: number): Promise<void> {
@@ -40,6 +41,40 @@ export class HttpStatusError extends Error {
   }
 }
 
+export class ResponseTooLargeError extends Error {
+  constructor(readonly maxBytes: number) {
+    super(`HTTP response exceeded ${maxBytes} bytes`);
+    this.name = 'ResponseTooLargeError';
+  }
+}
+
+async function readLimitedJson(
+  response: Response,
+  maxBytes: number
+): Promise<unknown> {
+  const contentLength = Number(response.headers.get('content-length') ?? 0);
+  if (contentLength > maxBytes) throw new ResponseTooLargeError(maxBytes);
+
+  const reader = response.body?.getReader();
+  if (!reader) return response.json();
+
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new ResponseTooLargeError(maxBytes);
+    }
+    chunks.push(value);
+  }
+
+  const body = new TextDecoder().decode(Buffer.concat(chunks));
+  return JSON.parse(body);
+}
+
 export async function fetchJson(
   url: URL,
   options: FetchJsonOptions = {}
@@ -47,6 +82,7 @@ export async function fetchJson(
   const timeoutMs = options.timeoutMs ?? 10_000;
   const retries = options.retries ?? 2;
   const retryDelayMs = options.retryDelayMs ?? 250;
+  const maxBytes = options.maxBytes ?? 2 * 1024 * 1024;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     const controller = new AbortController();
@@ -69,7 +105,7 @@ export async function fetchJson(
         throw new HttpStatusError(response.status, url.origin + url.pathname);
       }
 
-      return await response.json();
+      return await readLimitedJson(response, maxBytes);
     } catch (error) {
       if (attempt < retries && !(error instanceof HttpStatusError)) {
         await delay(retryDelayMs * 2 ** attempt);

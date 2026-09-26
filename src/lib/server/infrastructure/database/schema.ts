@@ -391,10 +391,13 @@ export const notificationDeliveries = sqliteTable(
     id: text('id').primaryKey(),
     notificationId: text('notification_id').notNull(),
     provider: text('provider').notNull(),
-    status: text('status', { enum: ['pending', 'sent', 'failed'] }).notNull(),
+    status: text('status', {
+      enum: ['pending', 'sending', 'sent', 'failed', 'exhausted']
+    }).notNull(),
     summary: text('summary').notNull(),
     payloadJson: text('payload_json').notNull(),
     attemptCount: integer('attempt_count').notNull().default(0),
+    claimedAt: text('claimed_at'),
     lastAttemptAt: text('last_attempt_at'),
     lastError: text('last_error'),
     nextAttemptAt: text('next_attempt_at'),
@@ -407,6 +410,22 @@ export const notificationDeliveries = sqliteTable(
       table.status,
       table.nextAttemptAt
     )
+  ]
+);
+
+export const tmdbWatchProviderCache = sqliteTable(
+  'tmdb_watch_provider_cache',
+  {
+    cacheKey: text('cache_key').primaryKey(),
+    providerSeriesId: text('provider_series_id').notNull(),
+    seasonNumber: integer('season_number').notNull(),
+    region: text('region').notNull(),
+    providersJson: text('providers_json').notNull(),
+    expiresAt: text('expires_at').notNull(),
+    updatedAt: text('updated_at').notNull()
+  },
+  (table) => [
+    index('tmdb_watch_provider_cache_expires_idx').on(table.expiresAt)
   ]
 );
 

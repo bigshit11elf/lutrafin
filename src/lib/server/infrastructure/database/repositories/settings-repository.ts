@@ -282,11 +282,12 @@ export class SettingsRepository {
   }
 
   getNotificationEventTypes(): NotificationEventType[] {
-    const configured = splitList(this.get(notificationEventTypesKey)).filter(
-      (event): event is NotificationEventType =>
-        notificationEventTypes.includes(event as NotificationEventType)
+    const stored = this.get(notificationEventTypesKey);
+    if (stored === undefined) return [...notificationEventTypes];
+
+    return splitList(stored).filter((event): event is NotificationEventType =>
+      notificationEventTypes.includes(event as NotificationEventType)
     );
-    return configured.length > 0 ? configured : [...notificationEventTypes];
   }
 
   setNotificationEventTypes(events: string[]): void {

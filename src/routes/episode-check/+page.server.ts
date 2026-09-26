@@ -6,7 +6,11 @@ import { loadConfig } from '$lib/server/config/app-config';
 import { getDatabase } from '$lib/server/infrastructure/database/client';
 import { SettingsRepository } from '$lib/server/infrastructure/database/repositories/settings-repository';
 import * as schema from '$lib/server/infrastructure/database/schema';
-import { streamingProviderAvailability } from '$lib/server/streaming/availability';
+import { enabledStreamingProviders } from '$lib/server/streaming/availability';
+import {
+  resolveEpisodeCheckStreamingGroups,
+  type StreamingEpisodeGroup
+} from '$lib/server/streaming/episode-check-availability';
 import { TmdbSeriesMetadataProvider } from '$lib/server/infrastructure/providers/tmdb/tmdb-provider';
 
 type MissingEpisode = {
@@ -33,10 +37,11 @@ type MissingSeries = {
   externalProviderSeriesId: string | null;
 };
 
-type StreamingEpisodeGroup = {
-  id: string;
-  label: string;
-  seriesIds: string[];
+type StreamingEpisodeSeries = {
+  seriesId: string;
+  externalProvider: string | null;
+  externalProviderSeriesId: string | null;
+  seasonNumbers: number[];
 };
 
 function episodeKey(
@@ -236,60 +241,24 @@ export const load: PageServerLoad = async ({ cookies }) => {
     config.providers.tmdbApiToken &&
     missing.length > 0
   ) {
-    const groups = new Map<string, StreamingEpisodeGroup>();
-    const unavailable: StreamingEpisodeGroup = {
-      id: 'unavailable',
-      label: dictionary.unavailableOrUnknown,
-      seriesIds: []
-    };
     const tmdb = new TmdbSeriesMetadataProvider({
       apiToken: config.providers.tmdbApiToken
     });
-    await Promise.all(
-      missing.map(async (series) => {
-        let availability = streamingProviderAvailability([], settings);
-        if (
-          series.externalProvider === 'tmdb' &&
-          series.externalProviderSeriesId
-        ) {
-          try {
-            availability = streamingProviderAvailability(
-              (
-                await Promise.all(
-                  series.seasons.map((season) =>
-                    tmdb.getSeasonWatchProviders(
-                      series.externalProviderSeriesId!,
-                      season.seasonNumber,
-                      settings.getRegion()
-                    )
-                  )
-                )
-              ).flat(),
-              settings
-            );
-          } catch {
-            availability = streamingProviderAvailability([], settings);
-          }
-        }
-        const available = availability.filter((provider) => provider.available);
-        if (available.length === 0) {
-          unavailable.seriesIds.push(series.seriesId);
-          return;
-        }
-        for (const provider of available) {
-          const group = groups.get(provider.id) ?? {
-            id: provider.id,
-            label: provider.label,
-            seriesIds: []
-          };
-          group.seriesIds.push(series.seriesId);
-          groups.set(provider.id, group);
-        }
-      })
-    );
+    const series: StreamingEpisodeSeries[] = missing.map((entry) => ({
+      seriesId: entry.seriesId,
+      externalProvider: entry.externalProvider,
+      externalProviderSeriesId: entry.externalProviderSeriesId,
+      seasonNumbers: entry.seasons.map((season) => season.seasonNumber)
+    }));
+    const region = settings.getRegion();
     streamingGroups.push(
-      ...groups.values(),
-      ...(unavailable.seriesIds.length > 0 ? [unavailable] : [])
+      ...(await resolveEpisodeCheckStreamingGroups(series, {
+        enabledProviders: enabledStreamingProviders(settings),
+        region,
+        unavailableLabel: dictionary.unavailableOrUnknown,
+        load: (providerSeriesId, seasonNumber) =>
+          tmdb.getSeasonWatchProviders(providerSeriesId, seasonNumber, region)
+      }))
     );
   }
 

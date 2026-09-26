@@ -35,6 +35,8 @@ for path in \
   vite.config.ts \
   tsconfig.json \
   drizzle.config.ts \
+  scripts/create-release-zip.sh \
+  scripts/check-release-secrets.sh \
   .dockerignore \
   .env.example \
   LICENSE \
@@ -67,6 +69,8 @@ for path in \
   vite.config.ts \
   tsconfig.json \
   drizzle.config.ts \
+  scripts/create-release-zip.sh \
+  scripts/check-release-secrets.sh \
   .dockerignore \
   .env.example \
   LICENSE \
@@ -80,23 +84,22 @@ for path in \
   copy_path "${path}"
 done
 
-cp "${ROOT_DIR}/.env.example" "${STAGING_DIR}/.env"
-cat >"${STAGING_DIR}/secrets/jellyfin_token.txt" <<'EOF'
+cat >"${STAGING_DIR}/secrets/jellyfin_token.txt.example" <<'EOF'
 replace-with-read-only-jellyfin-token
 EOF
-cat >"${STAGING_DIR}/secrets/tmdb_api_token.txt" <<'EOF'
+cat >"${STAGING_DIR}/secrets/tmdb_api_token.txt.example" <<'EOF'
 replace-with-tmdb-api-token
 EOF
-cat >"${STAGING_DIR}/secrets/admin_password.txt" <<'EOF'
+cat >"${STAGING_DIR}/secrets/admin_password.txt.example" <<'EOF'
 replace-with-strong-admin-password
 EOF
-chmod 600 "${STAGING_DIR}/secrets/"*.txt
+chmod 600 "${STAGING_DIR}/secrets/"*.example
 
 cat >"${STAGING_DIR}/RELEASE_INSTALL.md" <<'EOF'
 # Lutrafin Docker Release Install
 
-1. Edit `.env` and set at least `APP_BASE_URL`, `JELLYFIN_URL` and `ADMIN_USERNAME`.
-2. Replace the placeholder values in `secrets/*.txt`.
+1. Copy `.env.example` to `.env` and set at least `APP_BASE_URL`, `JELLYFIN_URL` and `ADMIN_USERNAME`.
+2. Copy `secrets/*.example` to the matching `secrets/*.txt` files and replace the placeholders.
 3. Start Lutrafin:
 
 ```sh

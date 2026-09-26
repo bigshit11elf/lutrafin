@@ -1,8 +1,7 @@
 import type { Handle } from '@sveltejs/kit';
 import { isAdminSession } from '$lib/server/auth/admin';
 import { loadConfig } from '$lib/server/config/app-config';
-import { runMigrations } from '$lib/server/infrastructure/database/migrate';
-import { startBackgroundJobs } from '$lib/server/jobs/scheduler';
+import { startServerProcess } from '$lib/server/startup';
 
 const securityHeaders = {
   'content-security-policy': [
@@ -20,8 +19,6 @@ const securityHeaders = {
   'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=()'
 };
 
-let migrationsApplied = false;
-
 function themeAttributes(theme: string | undefined): string {
   if (theme === 'light' || theme === 'dark') {
     return ` data-theme="${theme}" data-theme-preference="${theme}"`;
@@ -30,20 +27,14 @@ function themeAttributes(theme: string | undefined): string {
   return ' data-theme-preference="system"';
 }
 
-function ensureMigrationsApplied(): void {
-  if (!migrationsApplied) {
-    runMigrations();
-    startBackgroundJobs();
-    migrationsApplied = true;
-  }
-}
+export const init = startServerProcess;
 
 export const handle: Handle = async ({ event, resolve }) => {
-  ensureMigrationsApplied();
+  const config = loadConfig();
   event.locals.requestId = crypto.randomUUID();
   event.locals.admin = isAdminSession(event.cookies);
 
-  if (event.request.method === 'POST') {
+  if (event.request.method === 'POST' && config.logLevel === 'debug') {
     console.info('incoming POST request', {
       requestId: event.locals.requestId,
       urlOrigin: event.url.origin,
@@ -69,7 +60,6 @@ export const handle: Handle = async ({ event, resolve }) => {
     response.headers.set(header, value);
   }
 
-  const config = loadConfig();
   if (
     config.security.hstsEnabled &&
     new URL(config.appBaseUrl).protocol === 'https:'

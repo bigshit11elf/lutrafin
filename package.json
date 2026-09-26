@@ -1,6 +1,6 @@
 {
   "name": "lutrafin",
-  "version": "0.2.54",
+  "version": "0.2.58",
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "release:zip": "bash scripts/create-release-zip.sh",
+    "release:check-secrets": "bash scripts/check-release-secrets.sh",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/lib/server/infrastructure/database/migrate.ts"
   },

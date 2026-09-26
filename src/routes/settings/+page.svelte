@@ -13,6 +13,7 @@
     title: string;
     message: string;
   } | null>(null);
+  let revealedSecrets = $state(new Set<string>());
 
   const installedLanguages = $derived([
     { id: 'en', label: 'English' },
@@ -43,6 +44,16 @@
       series.name.toLowerCase().includes(seriesSearch.trim().toLowerCase())
     )
   );
+
+  const secretInputType = (name: string) =>
+    revealedSecrets.has(name) ? 'text' : 'password';
+
+  function setSecretRevealed(name: string, revealed: boolean) {
+    const next = new Set(revealedSecrets);
+    if (revealed) next.add(name);
+    else next.delete(name);
+    revealedSecrets = next;
+  }
 
   function jsonBody(formData: FormData) {
     const body: Record<string, string | string[]> = {};
@@ -447,7 +458,24 @@
               </label>
               <label class="settings-field">
                 <span>{data.t.token}</span>
-                <input name="ntfy.token" type="password" autocomplete="off" />
+                <span class="secret-input-row">
+                  <input
+                    name="ntfy.token"
+                    type={secretInputType('ntfy.token')}
+                    autocomplete="off"
+                  />
+                  <button
+                    class="button secondary compact"
+                    type="button"
+                    aria-label={data.t.revealSecret}
+                    onpointerdown={() => setSecretRevealed('ntfy.token', true)}
+                    onpointerup={() => setSecretRevealed('ntfy.token', false)}
+                    onpointerleave={() =>
+                      setSecretRevealed('ntfy.token', false)}
+                    onblur={() => setSecretRevealed('ntfy.token', false)}
+                    >👁</button
+                  >
+                </span>
               </label>
             {:else if provider.id === 'gotify'}
               <label class="settings-field">
@@ -456,7 +484,25 @@
               </label>
               <label class="settings-field">
                 <span>{data.t.token}</span>
-                <input name="gotify.token" type="password" autocomplete="off" />
+                <span class="secret-input-row">
+                  <input
+                    name="gotify.token"
+                    type={secretInputType('gotify.token')}
+                    autocomplete="off"
+                  />
+                  <button
+                    class="button secondary compact"
+                    type="button"
+                    aria-label={data.t.revealSecret}
+                    onpointerdown={() =>
+                      setSecretRevealed('gotify.token', true)}
+                    onpointerup={() => setSecretRevealed('gotify.token', false)}
+                    onpointerleave={() =>
+                      setSecretRevealed('gotify.token', false)}
+                    onblur={() => setSecretRevealed('gotify.token', false)}
+                    >👁</button
+                  >
+                </span>
               </label>
               <label class="settings-field">
                 <span>{data.t.priority}</span>
@@ -471,17 +517,44 @@
                 <span>{data.t.userKey}</span>
                 <input
                   name="pushover.userKey"
-                  type="password"
+                  type={secretInputType('pushover.userKey')}
                   autocomplete="off"
                 />
+                <button
+                  class="button secondary compact"
+                  type="button"
+                  aria-label={data.t.revealSecret}
+                  onpointerdown={() =>
+                    setSecretRevealed('pushover.userKey', true)}
+                  onpointerup={() =>
+                    setSecretRevealed('pushover.userKey', false)}
+                  onpointerleave={() =>
+                    setSecretRevealed('pushover.userKey', false)}
+                  onblur={() => setSecretRevealed('pushover.userKey', false)}
+                  >👁</button
+                >
               </label>
               <label class="settings-field">
                 <span>{data.t.applicationToken}</span>
                 <input
                   name="pushover.applicationToken"
-                  type="password"
+                  type={secretInputType('pushover.applicationToken')}
                   autocomplete="off"
                 />
+                <button
+                  class="button secondary compact"
+                  type="button"
+                  aria-label={data.t.revealSecret}
+                  onpointerdown={() =>
+                    setSecretRevealed('pushover.applicationToken', true)}
+                  onpointerup={() =>
+                    setSecretRevealed('pushover.applicationToken', false)}
+                  onpointerleave={() =>
+                    setSecretRevealed('pushover.applicationToken', false)}
+                  onblur={() =>
+                    setSecretRevealed('pushover.applicationToken', false)}
+                  >👁</button
+                >
               </label>
               <label class="settings-field">
                 <span>{data.t.device}</span>

@@ -21,6 +21,18 @@
 
   let pending = $state(false);
 
+  function applyThemePreference() {
+    const theme = rest['data-theme-option'];
+    if (theme !== 'system' && theme !== 'light' && theme !== 'dark') return;
+
+    document.documentElement.dataset.themePreference = theme;
+    if (theme === 'system') {
+      delete document.documentElement.dataset.theme;
+      return;
+    }
+    document.documentElement.dataset.theme = theme;
+  }
+
   async function run() {
     if (disabled || pending) return;
     if (confirmMessage && !confirm(confirmMessage)) return;
@@ -31,6 +43,7 @@
         headers: { accept: 'application/json' },
         redirect: 'follow'
       });
+      if (response.ok || response.redirected) applyThemePreference();
       if (response.redirected) {
         const url = new URL(response.url);
         await goto(url.pathname + url.search + url.hash, {

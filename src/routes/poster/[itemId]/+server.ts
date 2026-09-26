@@ -10,6 +10,7 @@ const allowedImageTypes = new Set([
   'image/webp',
   'image/gif'
 ]);
+const maxPosterBytes = 15 * 1024 * 1024;
 
 function buildJellyfinPosterUrl(
   baseUrl: string,
@@ -80,7 +81,15 @@ export const GET: RequestHandler = async ({ params, setHeaders }) => {
       throw error(502, 'Invalid poster response');
     }
 
+    const contentLength = Number(response.headers.get('content-length') ?? 0);
+    if (contentLength > maxPosterBytes) {
+      throw error(502, 'Poster response is too large');
+    }
+
     const body = await response.arrayBuffer();
+    if (body.byteLength > maxPosterBytes) {
+      throw error(502, 'Poster response is too large');
+    }
     setHeaders({
       'cache-control': 'private, max-age=3600',
       'content-type': contentType

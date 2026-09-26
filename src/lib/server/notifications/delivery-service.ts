@@ -5,7 +5,12 @@ import {
   type NotificationProviderId
 } from '$lib/server/infrastructure/database/repositories/settings-repository';
 import { NotificationRepository } from '$lib/server/infrastructure/database/repositories/notification-repository';
-import { providerConfigured, sendNotification } from './providers';
+import { mergeNotificationConfig } from './config';
+import {
+  PermanentNotificationError,
+  providerConfigured,
+  sendNotification
+} from './providers';
 import type { NotificationEvent, NotificationPayload } from './types';
 
 const retryDelaysMinutes = [5, 15, 60, 360, 1440];
@@ -44,7 +49,7 @@ function payload(
 }
 
 function nextAttempt(now: string, attemptCount: number): string | null {
-  if (attemptCount >= retryDelaysMinutes.length) return null;
+  if (attemptCount + 1 >= retryDelaysMinutes.length) return null;
   const date = new Date(now);
   date.setUTCMinutes(date.getUTCMinutes() + retryDelaysMinutes[attemptCount]);
   return date.toISOString();
@@ -63,7 +68,10 @@ export class NotificationDeliveryService {
     const summary = summaryFor(events);
     const now = new Date().toISOString();
     for (const provider of notificationProviders) {
-      const config = this.settings.getNotificationProviderConfig(provider.id);
+      const config = mergeNotificationConfig(
+        provider.id,
+        this.settings.getNotificationProviderConfig(provider.id)
+      );
       if (config.enabled !== true || !providerConfigured(provider.id, config))
         continue;
       const notificationId = crypto.randomUUID();
@@ -83,7 +91,10 @@ export class NotificationDeliveryService {
     const now = new Date().toISOString();
     let queuedCount = 0;
     for (const provider of notificationProviders) {
-      const config = this.settings.getNotificationProviderConfig(provider.id);
+      const config = mergeNotificationConfig(
+        provider.id,
+        this.settings.getNotificationProviderConfig(provider.id)
+      );
       if (config.enabled !== true || !providerConfigured(provider.id, config))
         continue;
       const notificationId = crypto.randomUUID();
@@ -103,10 +114,13 @@ export class NotificationDeliveryService {
 
   async sendDue(limit = 25): Promise<void> {
     const now = new Date().toISOString();
-    for (const delivery of this.repository.dueDeliveries(now, limit)) {
+    for (const delivery of this.repository.claimDueDeliveries(now, limit)) {
       try {
         const provider = delivery.provider as NotificationProviderId;
-        const config = this.settings.getNotificationProviderConfig(provider);
+        const config = mergeNotificationConfig(
+          provider,
+          this.settings.getNotificationProviderConfig(provider)
+        );
         await sendNotification(
           provider,
           config,
@@ -120,7 +134,10 @@ export class NotificationDeliveryService {
         this.repository.markFailed(delivery.id, {
           now: failedAt,
           error: message,
-          nextAttemptAt: nextAttempt(failedAt, delivery.attemptCount)
+          nextAttemptAt:
+            error instanceof PermanentNotificationError
+              ? null
+              : nextAttempt(failedAt, delivery.attemptCount)
         });
       }
     }

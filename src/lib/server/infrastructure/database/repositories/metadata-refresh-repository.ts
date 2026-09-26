@@ -23,13 +23,19 @@ type SeasonSnapshot = {
 function seasonEventType(
   season: SeasonSnapshot,
   previous: SeasonSnapshot | undefined,
-  today: string
+  previousCheckedAt: string | undefined,
+  currentCheckedAt: string
 ): 'season_announced' | 'season_released' | null {
   if (!season.airDate) return null;
-  if (season.airDate > today) {
-    return previous ? null : 'season_announced';
+  const currentDate = currentCheckedAt.slice(0, 10);
+  if (season.airDate > currentDate) {
+    return !previous || !previous.airDate ? 'season_announced' : null;
   }
-  if (!previous || !previous.airDate || previous.airDate > today) {
+  if (
+    previousCheckedAt &&
+    previousCheckedAt.slice(0, 10) < season.airDate &&
+    season.airDate <= currentDate
+  ) {
     return 'season_released';
   }
   return null;
@@ -150,6 +156,11 @@ export class DrizzleMetadataRefreshRepository implements RefreshSeriesMetadataRe
         .all()
         .map((season) => [season.seasonNumber, season])
     );
+    const previousCheckedAt = this.db
+      .select({ fetchedAt: schema.externalSeriesStates.fetchedAt })
+      .from(schema.externalSeriesStates)
+      .where(eq(schema.externalSeriesStates.id, stateId))
+      .get()?.fetchedAt;
     const notificationRepository = new NotificationRepository(this.db);
     const settings = new SettingsRepository(this.db);
     const hasBaseline = notificationRepository.hasBaseline(
@@ -157,7 +168,6 @@ export class DrizzleMetadataRefreshRepository implements RefreshSeriesMetadataRe
       input.provider
     );
     const eventTypes = new Set(settings.getNotificationEventTypes());
-    const today = input.checkedAt.slice(0, 10);
     const series = this.db
       .select({
         name: schema.mediaEntities.name,
@@ -288,7 +298,8 @@ export class DrizzleMetadataRefreshRepository implements RefreshSeriesMetadataRe
         const eventType = seasonEventType(
           { seasonNumber: season.seasonNumber, airDate: season.airDate },
           previousSeasons.get(season.seasonNumber),
-          today
+          previousCheckedAt,
+          input.checkedAt
         );
         if (!eventType || !eventTypes.has(eventType)) continue;
         tx.insert(schema.notificationEvents)

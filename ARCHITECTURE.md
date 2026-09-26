@@ -35,6 +35,8 @@ The database is a normalized projection and status store, not a Jellyfin clone.
 - `ignored_series` stores locally ignored series.
 - `shopping_list_items` stores the persistent shopping list.
 - `local_season_number_overrides` stores per-series corrections for Jellyfin season numbers that conflict with display names.
+- `notification_events` and `notification_deliveries` store deduplicated notification events and retryable delivery state.
+- `tmdb_watch_provider_cache` stores season watch-provider responses per TMDB series/season/region with a TTL.
 
 ## Sync Strategy
 
@@ -51,7 +53,7 @@ If the scan fails midway, existing local records must not be deleted or deactiva
 
 The implemented `SyncJellyfinLibrary` use case follows this model. It reads server info first, then the complete series list, then all seasons. Only after all remote reads finish does the repository transaction upsert and mark removed records.
 
-Sync and metadata refresh can run manually through admin-only run endpoints with pending/progress pages and automatically through an in-process scheduler. Jobs start only after migrations have run. Missing Jellyfin/TMDB configuration skips the respective job rather than failing application startup.
+Sync and metadata refresh can run manually through admin-only run endpoints with pending/progress pages and automatically through an in-process scheduler. Jobs start only after migrations have run at server init. Jellyfin sync and metadata refresh share a process-wide coordinator lock, so concurrent manual/API/scheduled starts fail predictably instead of duplicating work. Missing Jellyfin/TMDB configuration skips the respective job rather than failing application startup.
 
 ## Jellyfin Adapter
 
@@ -75,7 +77,7 @@ Provider adapters implement a common `SeriesMetadataProvider` shape. Matching pr
 
 TMDB is implemented as the primary provider. If a Jellyfin TMDB external ID exists, the TMDB adapter calls `/3/tv/{id}` directly and does not perform text search. Name/year search is only used as a conservative fallback and unresolved ambiguity is stored rather than guessed. TVmaze is implemented as a fallback provider using TVDB/IMDb lookup first, then conservative name/year search.
 
-TMDB watch-provider data is used server-side for optional regional streaming availability. Missing-season status uses TMDB season-level watch-provider endpoints so availability is tied to the concrete season. The same `src/lib/server/streaming/availability.ts` matching logic powers series detail pages and the grouped `New Seasons` overview. Matching prefers TMDB provider IDs and only falls back to exact aliases for services without reliable IDs in the configured set.
+TMDB watch-provider data is used server-side for optional regional streaming availability. Missing-season status uses TMDB season-level watch-provider endpoints so availability is tied to the concrete season. Results are cached in SQLite per series/season/region with a TTL to avoid repeated public-page fanouts. The same `src/lib/server/streaming/availability.ts` matching logic powers series detail pages and the grouped `New Seasons` overview. Matching prefers TMDB provider IDs and only falls back to exact aliases for services without reliable IDs in the configured set.
 
 The episode check stores local Jellyfin episodes and TMDB external episodes separately. The `/episode-check` page compares already aired external episodes with active local Jellyfin episodes, ignores specials and applies local season-number overrides before deciding that an episode is missing. It only reports gaps for seasons that have at least one local episode, avoiding duplicate reporting for entirely missing seasons.
 
@@ -92,9 +94,15 @@ The episode check stores local Jellyfin episodes and TMDB external episodes sepa
 - Public overview, detail, provider, poster and export read paths are intentionally readable without admin login for self-hosted household dashboards.
 - Admin login uses explicit username/password fields and a JSON session endpoint with failed-login rate limiting.
 - Admin sessions use random cookie values; only their hashes are stored server-side and logout invalidates the current session.
+- Admin sessions created before the current Node process start are rejected, so a restart invalidates existing admin sessions.
 - Manual sync, metadata refresh, theme and settings mutations use admin-only POST endpoints; framework CSRF protections are left enabled.
 - Scheduled background jobs skip overlapping runs for the same job name.
 - Provider tokens never leave the server.
+- Notification URLs are parsed with `new URL()` and restricted to HTTP/HTTPS; private HomeLab destinations remain valid.
+- Notification HTTP requests reject redirects and time out after 10 seconds. Retryable failures are limited to timeout/network errors, HTTP 408, HTTP 429 and HTTP 5xx; permanent 4xx/configuration/provider validation errors are exhausted without retry.
+- Notification delivery is at-least-once across process crashes because a provider may accept a request before Lutrafin records the delivery as sent. Sending claims use a short lease so stale in-flight rows can be retried.
+- Notification secrets may be supplied through environment variables or `_FILE` paths and are merged server-side with UI settings without being returned to browser clients.
+- External JSON reads and poster proxy responses enforce response-size limits.
 
 ## Technical Decisions
 

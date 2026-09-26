@@ -16,6 +16,7 @@ import {
   supportedStreamingProviders
 } from '$lib/server/infrastructure/database/repositories/settings-repository';
 import { providerConfigured } from '$lib/server/notifications/providers';
+import { mergeNotificationConfig } from '$lib/server/notifications/config';
 import * as schema from '$lib/server/infrastructure/database/schema';
 import { HttpJellyfinMediaSource } from '$lib/server/infrastructure/jellyfin/jellyfin-media-source';
 
@@ -79,7 +80,10 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
         id: provider.id,
         label: provider.label,
         enabled: providerConfig.enabled === true,
-        configured: providerConfigured(provider.id, providerConfig),
+        configured: providerConfigured(
+          provider.id,
+          mergeNotificationConfig(provider.id, providerConfig)
+        ),
         serverUrl:
           typeof providerConfig.serverUrl === 'string'
             ? providerConfig.serverUrl

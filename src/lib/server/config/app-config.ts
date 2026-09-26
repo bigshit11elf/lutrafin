@@ -45,7 +45,17 @@ const rawConfigSchema = z.object({
   SECURITY_HSTS_ENABLED: booleanEnvSchema.default(false),
   ADMIN_USERNAME: z.string().optional(),
   ADMIN_PASSWORD: z.string().optional(),
-  ADMIN_PASSWORD_FILE: z.string().optional()
+  ADMIN_PASSWORD_FILE: z.string().optional(),
+  NTFY_TOKEN: z.string().optional(),
+  NTFY_TOKEN_FILE: z.string().optional(),
+  GOTIFY_TOKEN: z.string().optional(),
+  GOTIFY_TOKEN_FILE: z.string().optional(),
+  PUSHOVER_USER_KEY: z.string().optional(),
+  PUSHOVER_USER_KEY_FILE: z.string().optional(),
+  PUSHOVER_APPLICATION_TOKEN: z.string().optional(),
+  PUSHOVER_APPLICATION_TOKEN_FILE: z.string().optional(),
+  WEBHOOK_URL: z.string().optional(),
+  WEBHOOK_URL_FILE: z.string().optional()
 });
 
 export type AppConfig = {
@@ -78,6 +88,15 @@ export type AppConfig = {
         password: string;
       }
     | undefined;
+  notifications: {
+    ntfy: { token: string | undefined };
+    gotify: { token: string | undefined };
+    pushover: {
+      userKey: string | undefined;
+      applicationToken: string | undefined;
+    };
+    webhook: { webhookUrl: string | undefined };
+  };
 };
 
 function readSecret(
@@ -154,7 +173,25 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
           password:
             readSecret(raw.ADMIN_PASSWORD, raw.ADMIN_PASSWORD_FILE) ?? ''
         }
-      : undefined
+      : undefined,
+    notifications: {
+      ntfy: {
+        token: readSecret(raw.NTFY_TOKEN, raw.NTFY_TOKEN_FILE)
+      },
+      gotify: {
+        token: readSecret(raw.GOTIFY_TOKEN, raw.GOTIFY_TOKEN_FILE)
+      },
+      pushover: {
+        userKey: readSecret(raw.PUSHOVER_USER_KEY, raw.PUSHOVER_USER_KEY_FILE),
+        applicationToken: readSecret(
+          raw.PUSHOVER_APPLICATION_TOKEN,
+          raw.PUSHOVER_APPLICATION_TOKEN_FILE
+        )
+      },
+      webhook: {
+        webhookUrl: readSecret(raw.WEBHOOK_URL, raw.WEBHOOK_URL_FILE)
+      }
+    }
   };
 
   if (config.jellyfin?.url && !config.jellyfin.token) {

@@ -57,6 +57,20 @@
       "when": 1790607600000,
       "tag": "0007_episode_overrides_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790694000000,
+      "tag": "0008_delivery_claims_watch_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790780400000,
+      "tag": "0009_notification_delivery_claimed_at",
+      "breakpoints": true
     }
   ]
 }

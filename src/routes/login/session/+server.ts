@@ -12,16 +12,27 @@ const failedAttempts = new Map<string, { count: number; resetAt: number }>();
 const rateLimitWindowMs = 60_000;
 const maxFailedAttempts = 8;
 const maxLoginBodyBytes = 4096;
+const maxTrackedClients = 10_000;
 
-function clientKey(request: Request, getClientAddress: () => string): string {
-  return (
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    getClientAddress()
-  );
+export function _loginClientKey(getClientAddress: () => string): string {
+  return getClientAddress();
+}
+
+function cleanupFailedAttempts(now: number): void {
+  for (const [key, attempt] of failedAttempts) {
+    if (attempt.resetAt <= now) failedAttempts.delete(key);
+  }
+
+  while (failedAttempts.size > maxTrackedClients) {
+    const oldest = failedAttempts.keys().next();
+    if (oldest.done) break;
+    failedAttempts.delete(oldest.value);
+  }
 }
 
 function rateLimited(key: string): boolean {
   const now = Date.now();
+  cleanupFailedAttempts(now);
   const attempt = failedAttempts.get(key);
   if (!attempt || attempt.resetAt <= now) return false;
   return attempt.count >= maxFailedAttempts;
@@ -29,6 +40,7 @@ function rateLimited(key: string): boolean {
 
 function recordFailedAttempt(key: string): void {
   const now = Date.now();
+  cleanupFailedAttempts(now);
   const current = failedAttempts.get(key);
   if (!current || current.resetAt <= now) {
     failedAttempts.set(key, { count: 1, resetAt: now + rateLimitWindowMs });
@@ -46,7 +58,7 @@ export const POST: RequestHandler = async ({
   request,
   getClientAddress
 }) => {
-  const key = clientKey(request, getClientAddress);
+  const key = _loginClientKey(getClientAddress);
   if (rateLimited(key)) {
     return json({ error: 'Too many failed login attempts.' }, { status: 429 });
   }

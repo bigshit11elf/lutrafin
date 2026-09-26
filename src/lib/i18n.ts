@@ -34,6 +34,8 @@ export const dictionaries = {
     streamingProviders: 'Streaming providers',
     groupByStreamingProvider: 'Group by streaming provider',
     showNormalEpisodeList: 'Show normal episode list',
+    showAllEpisodes: 'Show all episodes',
+    showFewerEpisodes: 'Show fewer episodes',
     showUngroupedSeasons: 'Show ungrouped seasons',
     unavailableOrUnknown: 'Unavailable / unknown',
     notAvailableOnEnabledProviders: 'Not available on enabled providers',
@@ -61,6 +63,8 @@ export const dictionaries = {
     episodeCheckHelp:
       'Compares aired provider episodes with the current Jellyfin snapshot. Specials are ignored.',
     expandAll: 'Expand all',
+    expandAllConfirm:
+      'Expanding all series renders every missing episode at once and can freeze the browser. Continue?',
     collapseAll: 'Collapse all',
     affectedSeasons: 'affected seasons',
     details: 'Details',
@@ -186,6 +190,7 @@ export const dictionaries = {
     applicationToken: 'Application token',
     device: 'Device',
     webhookUrl: 'Webhook URL',
+    revealSecret: 'Reveal secret while pressed',
     configuredSecretHelp: 'Leave secret fields empty to keep the stored value.',
     saveNotifications: 'Save notifications',
     everyHour: 'Every hour',
@@ -293,6 +298,8 @@ export const dictionaries = {
     streamingProviders: 'Streamingdienste',
     groupByStreamingProvider: 'Nach Streamingdienst gruppieren',
     showNormalEpisodeList: 'Normale Episodenliste anzeigen',
+    showAllEpisodes: 'Alle Episoden anzeigen',
+    showFewerEpisodes: 'Weniger Episoden anzeigen',
     showUngroupedSeasons: 'Ungruppierte Staffeln anzeigen',
     unavailableOrUnknown: 'Nicht verfügbar / unbekannt',
     notAvailableOnEnabledProviders: 'Nicht bei aktivierten Anbietern verfügbar',
@@ -321,6 +328,8 @@ export const dictionaries = {
     episodeCheckHelp:
       'Vergleicht ausgestrahlte Provider-Folgen mit dem aktuellen Jellyfin-Stand. Specials werden ignoriert.',
     expandAll: 'Alle ausklappen',
+    expandAllConfirm:
+      'Beim Ausklappen aller Serien werden alle fehlenden Episoden auf einmal gerendert und der Browser kann hängen bleiben. Fortfahren?',
     collapseAll: 'Alle einklappen',
     affectedSeasons: 'betroffene Staffeln',
     details: 'Details',
@@ -447,6 +456,7 @@ export const dictionaries = {
     applicationToken: 'Application-Token',
     device: 'Gerät',
     webhookUrl: 'Webhook-URL',
+    revealSecret: 'Secret beim Drücken anzeigen',
     configuredSecretHelp:
       'Leere Secret-Felder behalten den gespeicherten Wert.',
     saveNotifications: 'Benachrichtigungen speichern',

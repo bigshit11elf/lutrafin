@@ -1,60 +1,464 @@
+
 # Lutrafin
 
-Lutrafin  
-Copyright © 2026 Richard Becker  
-Licensed under the GNU Affero General Public License v3.0 only.
+### The Jellyfin Companion for People Who Still Buy Their Media
 
-Lutrafin is a small selfhosted Jellyfin season tracker. It reads series and season information from Jellyfin, stores a local SQLite projection, compares it with external metadata providers and helps track missing or announced seasons.
+**Know what's missing. Know what's new. Know what to buy next.**
 
-Jellyfin is strictly read-only. The application does not download media, trigger library scans, modify Jellyfin metadata, or proxy arbitrary Jellyfin requests.
+Lutrafin is a self-hosted companion for Jellyfin that keeps track of your TV show collection and tells you when you're missing seasons, when new seasons have aired, and what's coming next.
 
-## Current Status
+No downloads. No acquisition automation.  
+Just your Jellyfin library, external metadata, and a much better answer to:
 
-Core application features are implemented:
+**"Wait... do I already own season 4?"**
 
-- SvelteKit/TypeScript scaffold.
-- Server-side configuration validation.
-- SQLite/Drizzle schema and initial migration.
-- Health endpoints.
-- Responsive UI shell with overview, series detail, status, shopping list and settings pages.
-- Domain tests for status normalization, ID matching and season comparison.
-- Startup migrations are applied once per server process.
+[Quick Start](#-quick-start) · [What it does](#-what-lutrafin-does) · [Configuration](#️-configuration) · [Security](#-security) · [Development](#-development)
 
-Library sync is implemented:
+---
 
-- Read-only Jellyfin HTTP adapter.
-- Full series/season reconciliation use case.
-- Manual `Sync Library` / `Library synchronisieren` action with an animated in-page progress overlay.
-- Integration tests with a mock Jellyfin server.
-- Fail-safe sync behavior: failed scans do not mark existing records removed.
+<div align="center">
 
-Metadata, shopping and streaming integration is implemented for the current provider set:
+<img src="src/icon/screenshot.png" alt="Lutrafin dashboard" width="100%">
 
-- Direct TMDB-ID matching.
-- Conservative name/year fallback.
-- TVmaze fallback via TVDB/IMDb IDs.
-- Stored external status and seasons.
-- Manual due-only and forced full metadata refresh actions, grouped under `Metadata` / `Metadaten` with the same progress overlay.
-- Overview status/season comparison uses stored external metadata.
-- Detail pages show compact local/external season state, freshness information, streaming availability, regional Amazon season search links and collapsed technical metadata.
-- In-process scheduled Jellyfin sync and metadata refresh when configured.
-- Sync Status and Metadata Status expose recent run/lookup history and admin-only clear actions.
-- A persistent Shopping List can collect missing or announced seasons from filtered overview results, series detail pages or the Shopping List page itself. Items can be reordered, removed, printed in a reduced light print view and exported as CSV.
-- The `New Seasons` / `Neue Staffeln` overview can be toggled between the normal list and a streaming-provider grouped view.
-- Admins can enable Season Diagnostics in Settings. When enabled, local-vs-provider diagnostics are shown inside the collapsed `Technical details` section on series detail pages and can suggest per-series season number corrections.
-- Settings include language, region/country, automation intervals, notifications, season diagnostics, streaming display switches, individual streaming provider toggles, metadata provider toggles, library blacklist and ignored series.
-- Notifications can summarize newly announced or released seasons through ntfy, Gotify, Pushover or a generic JSON webhook. Events are persisted and deduplicated so the same season event is only sent once.
+</div>
 
-Docker runtime verification is still environment-dependent and could not be completed locally without a running Docker daemon.
+## 🦦 What is Lutrafin?
 
-## Requirements
+Lutrafin compares the TV shows in your **Jellyfin** library with metadata from services such as **TMDB** and **TVmaze**.
 
-- Node.js 22 or newer.
-- npm.
+It knows which series and seasons you already have locally and can show you:
 
-## Development
+- 📀 **Missing seasons** — seasons that exist, but aren't in your library
+- 🆕 **New seasons** — released seasons you don't have yet
+- 📅 **Announced seasons** — what's coming next
+- 🔎 **Missing episodes** — gaps inside seasons you already own
+- 🛒 **Shopping List** — collect the seasons you want to buy
+- 📺 **Streaming availability** — optionally see where a season is currently available
+- 🔔 **Notifications** — get notified about newly announced or released seasons
 
-```sh
+Lutrafin treats Jellyfin as a **read-only source**.
+
+It does **not** download media, trigger library scans, modify Jellyfin metadata, access your media folders or provide integrations with torrent or Usenet services.
+
+Think of it as the missing **collection status dashboard** for Jellyfin.
+
+---
+
+## 🚀 Quick Start
+
+If you already run Docker Compose, getting Lutrafin running is intentionally boring.
+
+### 1. Clone it
+
+```bash
+git clone https://github.com/bigshit11elf/lutrafin.git
+cd lutrafin
+```
+
+### 2. Create your configuration
+
+```bash
+cp .env.example .env
+mkdir -p secrets
+```
+
+Set the Jellyfin address in `.env`:
+
+```env
+JELLYFIN_URL=http://192.168.1.100:8096
+```
+
+> **Important:** `localhost` usually won't work here.  
+> The address must be reachable **from inside the Lutrafin container**.
+
+### 3. Add your secrets
+
+```bash
+printf 'your-jellyfin-token' > secrets/jellyfin_token.txt
+printf 'your-tmdb-token' > secrets/tmdb_api_token.txt
+printf 'choose-a-good-password' > secrets/admin_password.txt
+```
+
+### 4. Start it
+
+```bash
+docker compose up --build -d
+```
+
+Open:
+
+```text
+http://YOUR-SERVER:3000
+```
+
+**That's it. 🦦**
+
+Once Lutrafin is running, use **Sync Library** to discover your Jellyfin TV libraries and **Refresh All** to populate external metadata.
+
+---
+
+## 💿 Built for people who still own their media
+
+Lutrafin is explicitly **not an acquisition tool**.
+
+It is aimed at people who build their media libraries legally — especially those who buy DVDs, Blu-rays or UHD Blu-rays and encode their own collection where local law permits it.
+
+Lutrafin does not download anything.
+
+It does not talk to torrent clients.
+
+It does not talk to Usenet.
+
+It does not try to "grab" missing seasons.
+
+Instead, it tells you what exists, what you already have, and what you might want to put on your shopping list.
+
+If you run Jellyfin, still believe in actually owning the media you care about, and have reached the point where
+
+> *"I'll remember which seasons I already bought."*
+
+has stopped being a credible database strategy...
+
+**Lutrafin is for you.**
+
+---
+
+## ✨ What Lutrafin does
+
+### Your library at a glance
+
+Lutrafin synchronizes TV shows, seasons and episodes from Jellyfin into its own local SQLite database.
+
+Your Jellyfin installation remains untouched.
+
+The overview compares your collection with external metadata and makes it easy to spot:
+
+| Status | Meaning |
+| --- | --- |
+| ✅ Up to date | You have the currently released seasons |
+| 🆕 New season | A released season is missing locally |
+| 📅 Announced | A future season has been announced |
+| ⚠️ Incomplete | Individual aired episodes are missing |
+| ❓ Unresolved | Lutrafin couldn't confidently match the series |
+
+Lutrafin deliberately prefers **"I don't know"** over matching the wrong show.
+
+### 🛒 Shopping List
+
+Missing and announced seasons can be added to a persistent shopping list.
+
+Use it while browsing your collection, print it, or export it as CSV before hunting for physical releases.
+
+No automated purchasing.
+
+No mystery downloads.
+
+Just a list.
+
+Like civilized people used to have. 😏
+
+### 🔎 Episode Check
+
+Already own a season but something looks suspicious?
+
+The dedicated **Episode Check** compares aired TMDB episodes with your current Jellyfin episode snapshot and finds gaps inside seasons that are already present locally.
+
+Specials are ignored, and completely missing seasons remain in the normal missing-season workflow.
+
+### 📺 Streaming availability
+
+Optionally, Lutrafin can use TMDB watch-provider data for your configured country.
+
+This lets the UI show whether a missing season is currently available through one of your enabled streaming services.
+
+Streaming information is supplemental — your local collection remains the star of the show.
+
+### 🔔 Notifications
+
+Lutrafin can notify you when metadata updates reveal newly announced or newly released seasons.
+
+Supported notification targets include:
+
+- ntfy
+- Gotify
+- Pushover
+- generic JSON webhooks
+
+Events are persisted and deduplicated, so the same season announcement isn't repeatedly sent to you.
+
+---
+
+## 🔒 Jellyfin stays read-only
+
+This is an important design constraint.
+
+Lutrafin uses fixed, read-only Jellyfin API operations.
+
+It does **not**:
+
+- modify Jellyfin metadata
+- trigger library scans
+- mount your Jellyfin database
+- mount your media directories
+- expose a generic Jellyfin proxy
+- send Jellyfin credentials to the browser
+
+For best results, create a dedicated Jellyfin credential with the narrowest practical access to your TV libraries.
+
+---
+
+## 🧠 Metadata
+
+### TMDB
+
+TMDB is the primary metadata provider when a token is configured.
+
+If Jellyfin already contains a TMDB ID, Lutrafin uses it directly instead of trying to guess which show you're looking at.
+
+### TVmaze
+
+TVmaze can be enabled as a fallback provider.
+
+It is particularly useful when Jellyfin contains TVDB or IMDb identifiers but no TMDB ID.
+
+### Matching philosophy
+
+Metadata matching is intentionally conservative.
+
+Lutrafin prefers:
+
+```text
+No confident match
+```
+
+over:
+
+```text
+Congratulations, your copy of The Office (UK) is apparently The Office (US).
+```
+
+Existing provider IDs are preferred over text searches, and ambiguous matches remain unresolved.
+
+---
+
+## ⚙️ Configuration
+
+Docker Compose automatically loads `.env` from the project directory.
+
+A minimal useful configuration looks like this:
+
+```env
+APP_BASE_URL=http://localhost:3000
+APP_PORT=3000
+DATABASE_PATH=/data/app.db
+
+JELLYFIN_URL=http://192.168.1.100:8096
+
+TVMAZE_ENABLED=true
+TVDB_ENABLED=false
+
+SYNC_INTERVAL=6h
+METADATA_REFRESH_INTERVAL=24h
+
+LOG_LEVEL=info
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD_FILE=/run/secrets/admin_password
+```
+
+Secrets belong in files:
+
+```text
+secrets/
+├── admin_password.txt
+├── jellyfin_token.txt
+└── tmdb_api_token.txt
+```
+
+Do **not** commit them.
+
+### Common settings
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `APP_PORT` | `3000` | Lutrafin HTTP port |
+| `DATABASE_PATH` | `./data/app.db` | SQLite database |
+| `JELLYFIN_URL` | — | Jellyfin server reachable from Lutrafin |
+| `SYNC_INTERVAL` | `6h` | Automatic Jellyfin synchronization |
+| `METADATA_REFRESH_INTERVAL` | `24h` | External metadata refresh |
+| `TVMAZE_ENABLED` | `true` | Enable TVmaze fallback |
+| `TVDB_ENABLED` | `false` | Optional TVDB support |
+| `LOG_LEVEL` | `info` | Structured logging level |
+
+Many day-to-day options can also be changed directly from **Settings**, including language, country, automation intervals, notifications, streaming providers, metadata providers, diagnostics, ignored series and library exclusions.
+
+---
+
+## 🐳 Docker & HomeLab friendliness
+
+Lutrafin is designed to behave like a good citizen in a self-hosted environment.
+
+The provided container:
+
+- runs as a **non-root user**
+- only requires `/data` to be writable
+- uses a **read-only filesystem**
+- drops unnecessary Linux capabilities
+- uses `no-new-privileges`
+- does not require Jellyfin media mounts
+- does not require access to Jellyfin's database
+- loads no browser-facing assets from third-party CDNs
+
+That makes it suitable for the usual suspects:
+
+**Docker · Docker Compose · Unraid · TrueNAS SCALE · Portainer · reverse-proxy setups**
+
+For hardened deployments, keep the security settings from the supplied `docker-compose.yml`.
+
+---
+
+## 🔐 Security
+
+Lutrafin is small, but it isn't intended to be disposable demo code.
+
+Authentication and state-changing operations are server-side controlled. Admin sessions use random session identifiers stored in HTTP-only cookies, while only their hashes are persisted server-side.
+
+Mutating operations use explicit POST requests and framework CSRF protection remains enabled.
+
+API tokens stay server-side.
+
+Health endpoints don't expose secrets or stack traces.
+
+Provider failures are handled without destroying cached metadata.
+
+And because this is self-hosted software, you can inspect the whole thing yourself.
+
+Which brings us to...
+
+---
+
+## 🤖 Yes, AI built most of it
+
+I managed this project rather than pretending I personally hand-crafted every line of TypeScript.
+
+I defined the requirements, architecture and UX, tested the application, commissioned security reviews, challenged questionable implementations and sent things back when they weren't good enough.
+
+**AI did most of the actual coding.**
+
+That distinction matters.
+
+I did not want another piece of disposable vibe-coded sludge.
+
+The codebase has gone through repeated review, refactoring, automated testing and adversarial security checks. Authentication, sessions, CSRF handling, redirects, rate limiting and container security have all been revisited after review findings.
+
+Bugs discovered during review have become regression tests.
+
+AI wrote a lot of code.
+
+It didn't get to mark its own homework.
+
+---
+
+## 🏗️ Built like software, not like a demo
+
+Under the hood:
+
+```text
+SvelteKit
+TypeScript
+SQLite
+Drizzle ORM
+```
+
+The application uses a deliberately separated application/domain/infrastructure structure.
+
+External API responses are validated.
+
+Jellyfin access is constrained.
+
+Database migrations run automatically during startup.
+
+The test suite covers both normal application behavior and regressions discovered during review.
+
+For the curious:
+
+```text
+Jellyfin
+   │
+   │ read-only
+   ▼
+Lutrafin
+   │
+   ├── SQLite
+   │
+   ├── TMDB
+   │
+   └── TVmaze
+   │
+   ▼
+Collection status
+Missing seasons
+Episode gaps
+Shopping list
+Notifications
+```
+
+Your media itself never passes through Lutrafin.
+
+---
+
+## 🩺 Health Checks
+
+Two simple endpoints are available for container orchestration and monitoring:
+
+```text
+/health/live
+/health/ready
+```
+
+`/health/live` checks process liveness.
+
+`/health/ready` verifies internal readiness, including SQLite availability.
+
+---
+
+## 💾 Backup
+
+There is only one piece of application state you really need to care about:
+
+**the `/data` volume containing the SQLite database.**
+
+Back that up alongside your deployment configuration and secrets.
+
+Lutrafin does not need a backup of your Jellyfin database or media directories.
+
+---
+
+## ⬆️ Updating
+
+Pull the latest source/image, rebuild and restart:
+
+```bash
+docker compose up --build -d
+```
+
+Database migrations are applied automatically during startup before requests and scheduled jobs are served.
+
+The currently running Lutrafin version is visible in the sidebar.
+
+---
+
+## 🛠️ Development
+
+Want to poke at it?
+
+Requirements:
+
+- Node.js 22+
+- npm
+
+Then:
+
+```bash
 npm install
 npm run db:migrate
 npm run check
@@ -63,205 +467,100 @@ npm run build
 npm run dev
 ```
 
-`npm run db:migrate` is useful for explicit local setup checks. The server also applies migrations during startup before serving requests.
+`npm run db:migrate` is useful for explicit local setup checks, although the application also applies migrations automatically during startup.
 
-## Docker Compose Installation
+To build the self-contained Docker release archive:
 
-For a self-contained Docker release archive, run:
-
-```sh
+```bash
 npm run release:zip
 ```
 
-The archive is written to `release/lutrafin-<version>-docker.zip` and contains the Docker build context, `docker-compose.yml`, `.env` template and placeholder secret files needed for `docker compose up -d`.
-
-Copy the example configuration and set your local values:
-
-```sh
-cp .env.example .env
-```
-
-At minimum, set `JELLYFIN_URL` in `.env` to the LAN URL or DNS name that is reachable from the Lutrafin container. Do not use `localhost` unless Jellyfin runs in the same container.
-
-Create secret files outside version control:
-
-```sh
-mkdir -p secrets
-printf 'your-jellyfin-token' > secrets/jellyfin_token.txt
-printf 'your-tmdb-token' > secrets/tmdb_api_token.txt
-printf 'your-admin-password' > secrets/admin_password.txt
-docker compose up --build -d
-```
-
-The container runs as a non-root user and only needs the `/data` volume writable. It does not mount Jellyfin media folders or the Jellyfin database.
-
-For hardened deployments, keep `no-new-privileges`, dropped capabilities and `read_only: true` from the provided `docker-compose.yml`.
-
-## Configuration
-
-Configuration is read from environment variables. Docker Compose automatically loads `.env` from the project directory. Secrets should be provided through Docker-secret-compatible files in `secrets/`.
-
-Example `.env` for direct local testing:
-
-```env
-APP_BASE_URL=http://localhost:3000
-APP_PORT=3000
-DATABASE_PATH=/data/app.db
-JELLYFIN_URL=http://192.168.178.20:8096
-JELLYFIN_EXCLUDED_LIBRARY_IDS=
-TVMAZE_ENABLED=true
-TVDB_ENABLED=false
-SYNC_INTERVAL=6h
-METADATA_REFRESH_INTERVAL=24h
-LOG_LEVEL=info
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD_FILE=/run/secrets/admin_password
-```
-
-Keep these tokens out of `.env`; place them in files instead:
+The resulting archive is written to:
 
 ```text
-secrets/jellyfin_token.txt
-secrets/tmdb_api_token.txt
-secrets/admin_password.txt
+release/lutrafin-<version>-docker.zip
 ```
 
-| Variable                                 | Required      | Default                 | Description                                                                                                                  |
-| ---------------------------------------- | ------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `APP_BASE_URL`                           | no            | `http://localhost:3000` | Public app base URL.                                                                                                         |
-| `SOURCE_CODE_URL`                        | no            | GitHub repository       | Public source repository URL shown on the About/Legal page.                                                                  |
-| `ORIGIN`                                 | reverse proxy | unset                   | Optional SvelteKit trusted origin for CSRF-protected form actions. Set only if proxy headers cannot be forwarded correctly.  |
-| `HOST_HEADER`                            | reverse proxy | unset                   | Optional adapter-node header for reverse proxy deployments, e.g. `x-forwarded-host`. Do not set for direct access.           |
-| `PROTOCOL_HEADER`                        | reverse proxy | unset                   | Optional adapter-node header for reverse proxy deployments, e.g. `x-forwarded-proto`. Do not set for direct access.          |
-| `APP_PORT`                               | no            | `3000`                  | Runtime port for adapter-node deployments.                                                                                   |
-| `DATABASE_PATH`                          | no            | `./data/app.db`         | SQLite database path.                                                                                                        |
-| `JELLYFIN_URL`                           | sync          | unset                   | Jellyfin base URL.                                                                                                           |
-| `JELLYFIN_TOKEN` / `JELLYFIN_TOKEN_FILE` | sync          | unset                   | Read-only Jellyfin credential. Compose reads this from `secrets/jellyfin_token.txt`.                                         |
-| `JELLYFIN_EXCLUDED_LIBRARY_IDS`          | no            | unset                   | Optional comma-separated Jellyfin TV library IDs to exclude from automatic discovery.                                        |
-| `TMDB_API_TOKEN` / `TMDB_API_TOKEN_FILE` | metadata      | unset                   | Server-side TMDB token. Compose reads this from `secrets/tmdb_api_token.txt`.                                                |
-| `TVMAZE_ENABLED`                         | no            | `true`                  | Enable TVmaze fallback provider.                                                                                             |
-| `TVDB_ENABLED`                           | no            | `false`                 | TheTVDB is architecture-ready but not MVP-required.                                                                          |
-| `SYNC_INTERVAL`                          | no            | `6h`                    | Jellyfin sync interval for the in-process scheduler.                                                                         |
-| `METADATA_REFRESH_INTERVAL`              | no            | `24h`                   | Metadata refresh interval for the in-process scheduler.                                                                      |
-| `LOG_LEVEL`                              | no            | `info`                  | Structured logging level.                                                                                                    |
-| `SECURITY_HSTS_ENABLED`                  | no            | `false`                 | Enables the Strict-Transport-Security header only when `APP_BASE_URL` uses HTTPS. Keep disabled for direct HTTP HomeLab use. |
-| `ADMIN_USERNAME`                         | admin         | unset                   | Username allowed to run manual sync, metadata refresh and settings mutations.                                                |
-| `ADMIN_PASSWORD` / `ADMIN_PASSWORD_FILE` | admin         | unset                   | Admin password. Compose reads this from `secrets/admin_password.txt`.                                                        |
+and contains the Docker build context, Compose file, `.env` template and secret-file placeholders.
 
-The sidebar shows the app version tag from `src/lib/version.ts` so deployed builds can be identified in the UI.
+---
 
-Admin-only settings are available after login. Login uses explicit username/password fields and a JSON session endpoint with basic failed-login rate limiting, then stores a random admin session ID in an HTTP-only cookie while persisting only the session hash server-side. Empty or whitespace-only admin usernames are rejected at configuration load time, and empty login input is rejected server-side. Sync, metadata refresh, theme changes, library blacklist changes, provider enable/disable switches, streaming settings, ignored-series changes, region and language settings require that session. Mutating UI actions use explicit POST requests so crawlers and previews cannot trigger state changes via GET links.
+## 🧯 Troubleshooting
 
-Admin actions on the overview use explicit labels: `Sync Library` / `Library synchronisieren`, `Refresh Due` / `Fällige aktualisieren`, and `Refresh All` / `Alle aktualisieren`. `Refresh Due` respects the stored next-check timestamp. `Refresh All` intentionally rechecks all known series up to the server-side limit and is useful after provider fixes or metadata configuration changes. These actions first load server-rendered pending pages with an animated indeterminate progress overlay, then navigate to the long-running server action so users see that work is happening. Settings can also control the automatic Jellyfin library sync interval, the automatic due-refresh interval and an additional periodic full-refresh interval.
+### No series found
 
-The Shopping List is available from the sidebar. The `New Seasons` / `Neue Staffeln` and `Announced` / `Angekündigt` overview filters expose an admin action to add all currently shown seasons. The `New Seasons` overview also exposes a toggle to replace the normal list with streaming-provider groups when TMDB season watch-provider data is available. Series detail pages combine aired/announced shopping-list actions into a `Staffeln hinzufügen` dropdown. The Shopping List page has one `+` entry point with bulk actions for all new/all announced seasons plus individual candidate rows, then supports reorder, remove, clear-with-confirmation, print and CSV export.
+Check your Jellyfin URL and token, then run **Sync Library**.
 
-The sidebar entry `Episode check` / `Episodencheck` opens a dedicated page for finding missing episodes. It compares aired TMDB episodes with the current Jellyfin episode snapshot, ignores ignored series and specials/season 0, respects local season-number overrides and only reports episodes with an air date up to today. Completely missing seasons are intentionally hidden there because they are already covered by the missing-season overview; the episode check focuses on partial gaps inside locally present seasons. Admins can mark individual missing episodes as present for merged Jellyfin files, reset those manual overrides per series, open the series detail page or ignore the series directly from the episode check. The page can group affected series by season-level streaming availability.
+If Lutrafin runs inside Docker, remember that `localhost` refers to the Lutrafin container itself — not your Jellyfin host.
 
-Streaming availability uses TMDB watch-provider data for the configured region/country and the enabled provider list in Settings. Availability is fetched server-side on demand for series detail pages and for the grouped `New Seasons` overview. Missing-season rows and streaming grouping use TMDB season-level watch-provider data, so availability reflects the concrete season instead of only the series as a whole. The provider matching uses TMDB provider IDs and exact aliases so similarly named services such as ARD Plus are not shown as ARD Mediathek unless they explicitly match the configured service.
+### Metadata unresolved
 
-Season diagnostics can suggest one-click per-series corrections when Jellyfin reports a local season number that conflicts with the display name, for example `Staffel 1` stored as season `0`. Accepted corrections are persisted and applied to overview status, detail pages and Shopping List candidates while keeping the raw Jellyfin value visible in diagnostics.
+The series probably doesn't contain usable external IDs and the provider search was ambiguous.
 
-The app is self-hosting friendly: navigation icons are inline local SVGs and no browser-facing assets are loaded from third-party CDNs.
+This is intentional.
 
-Provider status and provider enable/disable controls live in Settings. Tokens remain secret-file based for metadata providers; notification tokens are stored server-side and never returned to the browser. Non-secret provider switches, streaming display options, individual streaming services, region/country, language, diagnostics, automation intervals, notifications, library blacklist and ignored series can be changed from the UI.
+Lutrafin would rather leave a series unresolved than silently match the wrong one.
 
-Notification providers are configured in Settings. The first successful metadata refresh for a series/provider establishes a notification baseline and does not emit historical events. Later metadata changes create persistent `season_announced` and `season_released` events, enqueue one summary notification per metadata refresh run and retry failed deliveries with bounded backoff. Provider failures are stored for retry and do not fail Jellyfin or metadata sync work.
+### Missing seasons aren't appearing
 
-Settings actions preserve the current Settings section via URL anchors. Series detail links include a return target so the Back to Overview link returns to the originating filtered/sorted overview state.
+Verify your TMDB token or TVmaze configuration and run **Refresh All**.
 
-## Health Endpoints
+### No streaming information
 
-- `/health/live`: process liveness only.
-- `/health/ready`: checks internal readiness, currently SQLite availability.
+Check that:
 
-## Jellyfin Configuration
+- TMDB is configured
+- streaming information is enabled
+- the correct country/region is selected
+- at least one streaming provider is enabled
 
-Use a dedicated Jellyfin credential with the narrowest practical library access. Lutrafin only uses read-only HTTP API calls and never mounts Jellyfin data or media directories.
+### Provider error
 
-Lutrafin discovers Jellyfin TV show libraries automatically through `/Library/MediaFolders`. Configure `JELLYFIN_EXCLUDED_LIBRARY_IDS` only if specific TV libraries should be ignored.
+Check the provider token, availability and rate limits.
 
-## TMDB And TVmaze
+Previously cached data remains available.
 
-TMDB is the primary metadata provider when `TMDB_API_TOKEN` is configured. Existing Jellyfin TMDB IDs are used directly before any text search.
+### Reverse proxy / CSRF problems
 
-TVmaze can be enabled as a fallback with `TVMAZE_ENABLED=true`. It is especially useful when Jellyfin has TVDB or IMDb IDs but no TMDB ID.
+For normal direct HomeLab access, `ORIGIN`, `HOST_HEADER` and `PROTOCOL_HEADER` are usually unnecessary.
 
-## Troubleshooting
+Behind a reverse proxy, either configure `ORIGIN` with the exact browser-facing URL or forward the appropriate host/protocol headers and configure Lutrafin accordingly.
 
-- `Cross-site POST form submissions are forbidden`: current admin login and long-running admin actions avoid browser form POSTs. If this still appears for custom deployments or older builds, remove stale `ORIGIN`, `HOST_HEADER` and `PROTOCOL_HEADER` settings and recreate the container. For direct `http://localhost:3000` or `http://IP:3000` access, these values are usually not needed. Behind a reverse proxy, either set `ORIGIN` to the exact browser URL or configure `HOST_HEADER=x-forwarded-host` and `PROTOCOL_HEADER=x-forwarded-proto` while ensuring the proxy actually sends those headers.
-- `No series found`: verify `JELLYFIN_URL`, token validity and optional `JELLYFIN_EXCLUDED_LIBRARY_IDS`, then run `Sync Library` / `Library synchronisieren`.
-- `Metadata unresolved`: Jellyfin likely has no usable external IDs and provider search was ambiguous. The app intentionally does not guess.
-- Missing/upcoming season links are absent: run `Refresh All` / `Alle aktualisieren` after confirming the TMDB token or TVmaze fallback is configured. Links only appear when the provider resolved the series and returned season data.
-- Streaming availability or streaming grouping is absent: confirm `TMDB_API_TOKEN` is configured, streaming info is enabled in Settings, the correct region/country is selected and at least one streaming provider is enabled.
-- `Provider error`: check TMDB token validity, provider availability and rate limits. Cached data remains visible.
-- `Poster not found`: posters are only proxied for active known Jellyfin series with a primary image tag.
-- Docker image build not verified locally: ensure the Docker daemon is running, then run `docker build -t lutrafin:test .`.
+---
 
-## Security Considerations
+## 🌍 Third-party services
 
-- API tokens must stay server-side.
-- Do not expose Jellyfin tokens in browser URLs.
-- The app intentionally has no generic Jellyfin proxy.
-- Jellyfin sync uses fixed read-only adapter methods only.
-- TMDB API tokens are only used server-side.
-- SQLite foreign keys are enabled.
-- Security headers are set globally.
-- HSTS is intentionally opt-in via `SECURITY_HSTS_ENABLED=true` and is only emitted when `APP_BASE_URL` uses HTTPS, so direct HTTP HomeLab deployments remain supported by default.
-- Public overview, detail, provider, poster and export read paths are intentionally readable without admin login for self-hosted household dashboards; all state-changing actions require the admin session.
-- Admin sessions are random, server-side tracked and invalidated on logout.
-- Mutating endpoints use POST; framework CSRF protections remain enabled.
-- Health responses do not include secrets or stack traces.
-- Provider and Jellyfin failures should be diagnosed through structured stdout/stderr logs, not browser-visible stack traces.
+Lutrafin integrates with independent third-party projects and services including Jellyfin, TMDB and TVmaze, with architecture support for TVDB.
 
-## Source Code
+These projects are not affiliated with Lutrafin and retain their respective terms, trademarks, attribution requirements and API policies.
 
-The canonical public source repository is:
+### TMDB
 
-```text
-https://github.com/bigshit11elf/lutrafin
-```
+> This product uses the TMDB API but is not endorsed or certified by TMDB.
 
-Set `SOURCE_CODE_URL` only if your deployment should point to a different public repository.
+### TVmaze
 
-## Third-party Services
+TV metadata is provided in part by [TVmaze](https://www.tvmaze.com/).
 
-Lutrafin integrates with independent third-party projects and services, including Jellyfin, TMDB, TVmaze and optionally TVDB. These services are not part of Lutrafin and retain their own terms, trademarks, attribution rules and API policies.
+See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for dependency and attribution information.
 
-### TMDB Attribution
+---
 
-This product uses the TMDB API but is not endorsed or certified by TMDB.
+## 📜 License
 
-### TVmaze Attribution
+Lutrafin is free and open-source software licensed under:
 
-TV metadata provided in part by [TVmaze](https://www.tvmaze.com/).
-
-See `THIRD_PARTY_NOTICES.md` for runtime dependency and attribution notes.
-
-## License
-
-Lutrafin is licensed under the GNU Affero General Public License Version 3 only (`AGPL-3.0-only`).
+**GNU Affero General Public License Version 3 only (`AGPL-3.0-only`)**
 
 Copyright © 2026 Richard Becker
 
-See `LICENSE` for the full license text.
+See [`LICENSE`](LICENSE) for the full license text.
 
-## Backup
+---
 
-Back up the writable data volume containing the SQLite database and keep deployment configuration/secrets separately. No Jellyfin media directory or Jellyfin internal database is required.
+### What am I missing?
 
-## Update
+**That is the whole point.**
 
-Pull the new image/source, rebuild and restart. Database migrations run during application startup before requests and jobs are served.
+Lutrafin — keeping track of the discs you swore you'd remember buying.
 
-The UI version is displayed in the sidebar. Every code or documentation change bumps the app version according to impact.
-
-```sh
-docker compose up --build -d
-```
-
-## Attribution
-
-TMDB is used as the primary metadata provider when configured. This product uses the TMDB API but is not endorsed or certified by TMDB.
-
-TVmaze is used as an optional fallback provider when enabled. TVmaze data is licensed under CC BY-SA; provide attribution when exposing TVmaze-derived metadata.

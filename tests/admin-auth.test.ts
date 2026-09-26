@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { loadConfig } from '../src/lib/server/config/app-config';
+import { _loginClientKey } from '../src/routes/login/session/+server';
 
 describe('admin auth configuration', () => {
   const baseEnv = {
@@ -69,5 +73,46 @@ describe('admin auth configuration', () => {
       loadConfig({ ...baseEnv, SECURITY_HSTS_ENABLED: 'true' }).security
         .hstsEnabled
     ).toBe(true);
+  });
+
+  it('uses getClientAddress instead of spoofable X-Forwarded-For', () => {
+    expect(_loginClientKey(() => '10.0.0.5')).toBe('10.0.0.5');
+  });
+
+  it('loads notification secrets from file variables', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'lutrafin-secrets-'));
+    try {
+      const ntfy = join(directory, 'ntfy.txt');
+      const gotify = join(directory, 'gotify.txt');
+      const pushoverUser = join(directory, 'pushover-user.txt');
+      const pushoverToken = join(directory, 'pushover-token.txt');
+      const webhook = join(directory, 'webhook.txt');
+      writeFileSync(ntfy, 'ntfy-secret');
+      writeFileSync(gotify, 'gotify-secret');
+      writeFileSync(pushoverUser, 'pushover-user');
+      writeFileSync(pushoverToken, 'pushover-token');
+      writeFileSync(webhook, 'http://127.0.0.1:9000/hook');
+
+      expect(
+        loadConfig({
+          ...baseEnv,
+          NTFY_TOKEN_FILE: ntfy,
+          GOTIFY_TOKEN_FILE: gotify,
+          PUSHOVER_USER_KEY_FILE: pushoverUser,
+          PUSHOVER_APPLICATION_TOKEN_FILE: pushoverToken,
+          WEBHOOK_URL_FILE: webhook
+        }).notifications
+      ).toEqual({
+        ntfy: { token: 'ntfy-secret' },
+        gotify: { token: 'gotify-secret' },
+        pushover: {
+          userKey: 'pushover-user',
+          applicationToken: 'pushover-token'
+        },
+        webhook: { webhookUrl: 'http://127.0.0.1:9000/hook' }
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

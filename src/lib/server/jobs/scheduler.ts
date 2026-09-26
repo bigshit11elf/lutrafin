@@ -4,11 +4,14 @@ import { durationToMs, loadConfig } from '$lib/server/config/app-config';
 import { getDatabase } from '$lib/server/infrastructure/database/client';
 import { SettingsRepository } from '$lib/server/infrastructure/database/repositories/settings-repository';
 import { NotificationDeliveryService } from '$lib/server/notifications/delivery-service';
+import { runExclusive } from './job-coordinator';
 
 let schedulerStarted = false;
 const runningJobs = new Set<string>();
 let lastMetadataDueRunAt = 0;
 let lastJellyfinSyncRunAt = 0;
+let metadataBackoffMs = 60_000;
+let jellyfinBackoffMs = 60_000;
 
 async function runSafely(
   name: string,
@@ -68,8 +71,17 @@ export function startBackgroundJobs(): void {
       const intervalMs =
         interval === 'off' ? Number.POSITIVE_INFINITY : durationToMs(interval);
       if (now - lastJellyfinSyncRunAt >= intervalMs) {
-        lastJellyfinSyncRunAt = now;
-        await createSyncJellyfinLibrary().execute();
+        try {
+          await runExclusive('jellyfin-sync', () =>
+            createSyncJellyfinLibrary().execute()
+          );
+          lastJellyfinSyncRunAt = now;
+          jellyfinBackoffMs = 60_000;
+        } catch (error) {
+          lastJellyfinSyncRunAt = Date.now() - intervalMs + jellyfinBackoffMs;
+          jellyfinBackoffMs = Math.min(jellyfinBackoffMs * 2, 30 * 60_000);
+          throw error;
+        }
       }
     });
   }
@@ -82,8 +94,17 @@ export function startBackgroundJobs(): void {
       const intervalMs =
         interval === 'off' ? Number.POSITIVE_INFINITY : durationToMs(interval);
       if (now - lastMetadataDueRunAt >= intervalMs) {
-        lastMetadataDueRunAt = now;
-        await createRefreshSeriesMetadata().refreshDue(50);
+        try {
+          await runExclusive('metadata-refresh', () =>
+            createRefreshSeriesMetadata().refreshDue(50)
+          );
+          lastMetadataDueRunAt = now;
+          metadataBackoffMs = 60_000;
+        } catch (error) {
+          lastMetadataDueRunAt = Date.now() - intervalMs + metadataBackoffMs;
+          metadataBackoffMs = Math.min(metadataBackoffMs * 2, 30 * 60_000);
+          throw error;
+        }
       }
 
       const fullInterval = settings.getMetadataFullRefreshInterval();
@@ -95,8 +116,10 @@ export function startBackgroundJobs(): void {
           nowDate
         )
       ) {
+        await runExclusive('metadata-refresh', () =>
+          createRefreshSeriesMetadata().refreshAll(250)
+        );
         settings.setMetadataFullRefreshLastRunAt(nowDate.toISOString());
-        await createRefreshSeriesMetadata().refreshAll(250);
       }
     });
   }

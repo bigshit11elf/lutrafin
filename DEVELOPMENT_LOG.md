@@ -3,18 +3,18 @@
 ## Current State
 
 - Current phase: MVP finalization.
-- Last completed: Fixed the dead notification settings buttons, finished the Docker rebrand and added `AGENTS.md` with the mandatory pre-commit checklist.
+- Last completed: Fixed notification release events, delivery lease recovery, provider error classification, notification secret files and debug logging.
 - Build: passing (`npm run build`).
-- Tests: passing (`npm test`, 51 tests).
-- Database schema version: 0007_episode_overrides_notifications.
+- Tests: passing (`npm run check`, `npm run lint`, `npm test`, 73 tests).
+- Database schema version: 0008_delivery_claims_watch_cache.
 - Known blocking issues: none known.
 
 ## Next Actions
 
 1. Run Docker build when Docker daemon is available.
 2. Test against a real Jellyfin/TMDB setup.
-3. Add optional tests for detail repository/poster proxy.
-4. Continue accessibility and visual polish with real data.
+3. Continue CSP hardening toward removing `script-src 'unsafe-inline'`.
+4. Add admin password change handling if runtime password rotation becomes supported.
 
 ## Open Issues
 
@@ -24,6 +24,111 @@
 - TMDB provider and TVmaze fallback are implemented.
 - Docker packaging exists but has not yet been runtime-tested with a real Jellyfin/TMDB configuration.
 - Local Docker build could not run because the Docker daemon was unavailable in this session.
+
+## 2026-09-26 - Notification Reliability Follow-Up
+
+### Fixed
+
+- `season_released` events now use the metadata observation window (`previousCheckedAt < airDate <= currentCheckedAt`) so an announced season emits one release event when crossing its air date and later refreshes deduplicate it.
+- Notification deliveries now store `claimedAt`; stale `sending` claims older than five minutes can be reclaimed after a process crash.
+- Permanent notification failures such as invalid config, non-retryable HTTP 4xx and Pushover API rejection now become exhausted without retry, while timeout/network, 408, 429 and 5xx errors remain retryable.
+- POST origin diagnostics are now only logged when `LOG_LEVEL=debug`.
+
+### Added
+
+- Added the dashboard screenshot to the repository and linked it from the README.
+- Added optional notification secret inputs through environment variables and `_FILE` paths for ntfy, Gotify, Pushover and Generic Webhook, merged server-side without returning secrets to clients.
+- Replaced empty TMDB cache/watch-provider catches with debug-gated, redacted diagnostic logs.
+- Added tests for release-event timing/deduplication, stale delivery lease recovery, provider error classification, Pushover rejection and notification `_FILE` secrets.
+
+### Changed
+
+- Documented Generic Webhook private HTTP targets and at-least-once delivery semantics.
+- Bumped the app version to `0.2.58`.
+
+### Verification
+
+- `npm run check`: passing.
+- `npm run lint`: passing.
+- `npm test`: passing, 78 tests.
+- `npm run build`: passing.
+- `npm run release:zip`: passing, generated `release/lutrafin-0.2.58-docker.zip`.
+- `npm run release:check-secrets`: passing.
+
+## 2026-09-26 - Immediate Theme Switching Fix
+
+### Fixed
+
+- Theme switch actions now update the root `data-theme` and `data-theme-preference` attributes immediately after the POST succeeds, so switching between system, light and dark no longer requires a browser reload.
+
+### Changed
+
+- Bumped the app version to `0.2.57`.
+
+### Verification
+
+- `npm run check`: passing.
+- `npm run lint`: passing.
+- `npm test`: passing, 73 tests.
+- `npm run build`: passing.
+- `npm run release:zip`: passing, generated `release/lutrafin-0.2.57-docker.zip`.
+- `npm run release:check-secrets`: passing.
+
+## 2026-09-26 - External Entry Brand Intro
+
+### Added
+
+- Added a short one-time brand intro for external/direct page entries: the loaded page is darkened and blurred behind a centered sharp Lutrafin logo that zooms forward and clears immediately at the end.
+- The intro is gated by `sessionStorage`, so it does not replay during internal SvelteKit navigation in the same tab.
+- Users with `prefers-reduced-motion: reduce` skip the intro entirely.
+
+### Changed
+
+- Bumped the app version to `0.2.56`.
+
+### Verification
+
+- `npm run check`: passing.
+- `npm run lint`: passing.
+- `npm test`: passing, 73 tests.
+- `npm run build`: passing.
+- `npm run release:zip`: passing, generated `release/lutrafin-0.2.56-docker.zip`.
+- `npm run release:check-secrets`: passing.
+
+## 2026-09-26 - Delivery Scheduler And Release Hardening
+
+### Added
+
+- Added SQLite-backed TMDB season watch-provider caching with a 6h TTL so public detail pages do not fan out to TMDB on every request.
+- Added a shared job coordinator for Jellyfin sync and metadata refresh; concurrent manual/API/scheduled starts now fail with `409 Already running` or a clear UI redirect message.
+- Added release secret checks via `npm run release:check-secrets` and included release scripts in the generated source archive.
+- Added hold-to-reveal controls for secret notification fields in Settings.
+
+### Changed
+
+- Notification provider requests now use a 10s timeout, reject redirects and validate notification URLs with `new URL()` while still allowing private HTTP/HTTPS HomeLab targets.
+- Notification deliveries are claimed through `pending`/`failed` -> `sending` -> `sent`, final failures become `exhausted`, and due retries no longer pick exhausted rows.
+- Login rate limiting now keys only on SvelteKit `getClientAddress()` and bounds the in-memory failed-attempt store with TTL cleanup and a maximum size.
+- Admin sessions created before the current Node process start are now rejected, invalidating sessions on restart.
+- Scheduler startup moved into the server init path, and scheduler success timestamps are updated only after successful jobs; failures retry with short exponential backoff instead of waiting for the full configured interval.
+- Docker Compose now binds to `127.0.0.1` by default, has a `/health/ready` healthcheck and optional PID/memory limits.
+- Release ZIPs no longer contain a generated `.env` or populated `secrets/*.txt`; only `.env.example` and `secrets/*.example` placeholders are shipped.
+- Bumped the app version to `0.2.55`.
+
+### Fixed
+
+- A known season that previously had `airDate=null` and later receives a future date now emits one `season_announced` event while preserving event-key deduplication.
+- An intentionally empty notification event selection now stays empty instead of falling back to all event types.
+- External JSON responses now have a 2 MiB default read limit, and poster proxy responses are capped at 15 MiB.
+
+### Verification
+
+- `npm run check`: passing.
+- `npm run lint`: passing.
+- `npm test`: passing, 73 tests.
+- `npm run build`: passing.
+- `npm run release:zip`: passing, generated `release/lutrafin-0.2.55-docker.zip`.
+- `npm run release:check-secrets`: passing.
 
 ## 2026-09-26 - Settings Notification Submit Target And Docker Rebrand
 
