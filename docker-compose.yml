@@ -1,0 +1,47 @@
+services:
+  lutrafin:
+    build: .
+    image: lutrafin:local
+    container_name: lutrafin
+    restart: unless-stopped
+    ports:
+      - '${APP_PORT:-3000}:3000'
+    environment:
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+      APP_PORT: ${APP_PORT:-3000}
+      DATABASE_PATH: ${DATABASE_PATH:-/data/app.db}
+      JELLYFIN_URL: ${JELLYFIN_URL:?Set JELLYFIN_URL in .env}
+      JELLYFIN_TOKEN_FILE: /run/secrets/jellyfin_token
+      JELLYFIN_EXCLUDED_LIBRARY_IDS: ${JELLYFIN_EXCLUDED_LIBRARY_IDS:-}
+      TMDB_API_TOKEN_FILE: /run/secrets/tmdb_api_token
+      TVMAZE_ENABLED: ${TVMAZE_ENABLED:-true}
+      TVDB_ENABLED: ${TVDB_ENABLED:-false}
+      SYNC_INTERVAL: ${SYNC_INTERVAL:-6h}
+      METADATA_REFRESH_INTERVAL: ${METADATA_REFRESH_INTERVAL:-24h}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+    volumes:
+      - lutrafin-data:/data
+    secrets:
+      - jellyfin_token
+      - tmdb_api_token
+      - admin_password
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+
+volumes:
+  lutrafin-data:
+
+secrets:
+  jellyfin_token:
+    file: ./secrets/jellyfin_token.txt
+  tmdb_api_token:
+    file: ./secrets/tmdb_api_token.txt
+  admin_password:
+    file: ./secrets/admin_password.txt
